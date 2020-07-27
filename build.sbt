@@ -7,10 +7,12 @@ ThisBuild / organizationName := "Ligature"
 
 resolvers += Resolver.mavenLocal
 
+mainClass in (Compile, run) := Some("dev.ligature.lab.desktop.LigatureLabDesktop")
+mainClass in (Compile, packageBin) := Some("dev.ligature.lab.desktop.LigatureLabDesktop")
+
 lazy val root = (project in file("."))
   .settings(
     name := "ligature-lab-desktop",
-    libraryDependencies += "dev.ligature" %% "ligature-rocksdb" % "0.1.0-SNAPSHOT",
-    libraryDependencies += scalaTest % Test,
-    libraryDependencies += "dev.ligature" %% "ligature-test-suite" % "0.1.0-SNAPSHOT" % Test
+    libraryDependencies += "dev.ligature" %% "ligature-keyvalue" % "0.1.0-SNAPSHOT",
+    libraryDependencies += scalaTest % Test
   )
