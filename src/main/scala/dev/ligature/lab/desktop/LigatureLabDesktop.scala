@@ -4,13 +4,13 @@
 
 package dev.ligature.lab.desktop
 
-import java.awt.Dimension
-import java.awt.event.{ActionEvent, ActionListener}
+import java.awt.{BorderLayout, Dimension}
+import java.awt.event.ActionEvent
 
 import dev.ligature.{Ligature, NamedEntity, Predicate, Statement}
 import dev.ligature.store.inmemory.LigatureInMemory
-import javax.swing.table.TableColumn
-import javax.swing.{JButton, JFrame, JLabel, JPanel, JSplitPane, JTable, JTextField, UIManager, WindowConstants}
+import javax.swing.{JButton, JFrame, JLabel, JPanel, JScrollPane, JSplitPane, JTable, JTextField, UIManager, WindowConstants}
+import javax.swing.table.DefaultTableModel
 
 object LigatureLabDesktop {
   def main(args: Array[String]): Unit = {
@@ -30,20 +30,23 @@ class MainWindow {
   frame.setSize(new Dimension(1200,800))
 
   def startUp() {
-    frame.setContentPane(MainPane.create(store))
+    val mp = new MainPane(store)
+    frame.setContentPane(mp.p)
     frame.setVisible(true)
+    mp.resize()
   }
 }
 
-object MainPane {
-  def create(store: Ligature): JSplitPane = {
-    val p = new JSplitPane()
-    p.setOrientation(JSplitPane.VERTICAL_SPLIT)
-    val contentPane = new ContentPane(store)
-    val entryPane = new EntryPane(store, contentPane)
-    p.setTopComponent(entryPane.p)
-    p.setBottomComponent(contentPane.p)
-    p
+class MainPane(private val store: Ligature) {
+  val p = new JSplitPane()
+  p.setOrientation(JSplitPane.VERTICAL_SPLIT)
+  private val contentPane = new ContentPane(store)
+  private val entryPane = new EntryPane(store, contentPane)
+  p.setTopComponent(entryPane.p)
+  p.setBottomComponent(contentPane.p)
+
+  def resize(): Unit = {
+    p.setDividerLocation(.2)
   }
 }
 
@@ -61,8 +64,8 @@ class EntryPane(val store: Ligature, contentPane: ContentPane) {
   private val addButton = new JButton("Add")
   val p = new JPanel()
 
-  p.add(collectionLabel)
-  p.add(collectionTextBox)
+//  p.add(collectionLabel)
+//  p.add(collectionTextBox)
   p.add(subjectLabel)
   p.add(subjectTextBox)
   p.add(predicateLabel)
@@ -78,7 +81,8 @@ class EntryPane(val store: Ligature, contentPane: ContentPane) {
     val `object` = NamedEntity(objectTextBox.getText())
 
     store.write.use( tx => for {
-      _ <- tx.addStatement(context, Statement(subject, predicate, `object`))
+      _ <- tx.addStatement(
+        context, Statement(subject, predicate, `object`))
     } yield ()).unsafeRunSync()
 
     contentPane.update()
@@ -86,11 +90,34 @@ class EntryPane(val store: Ligature, contentPane: ContentPane) {
 }
 
 class ContentPane(private val store: Ligature) {
-  val p = new JPanel()
-  private val t = new JTable()
-  p.add(t)
+  val data: Array[Array[AnyRef]] = Array()
+  val columnNames: Array[AnyRef] = Array("Statement")
+
+  val tm = new DefaultTableModel(data, columnNames)
+
+  val p = new JPanel(new BorderLayout())
+  private val t = new JTable(tm)
+  t.setFillsViewportHeight(true)
+  private val scrollPane = new JScrollPane()
+  scrollPane.setViewportView(t)
+  p.add(scrollPane)
+  p.add(scrollPane)
 
   def update(): Unit = {
-    ???
+    while (tm.getRowCount > 0) {
+      tm.removeRow(0)
+    }
+
+    val collection = NamedEntity("test") //TODO hard coded for now
+
+    val s = store.compute.use( tx => for {
+      s <- tx.allStatements(collection)
+    } yield s).unsafeRunSync()
+
+    s.foreach { v =>
+      println(v.toString)
+      val a: Array[Object] = Array(v.toString)
+      tm.addRow(a)
+    }
   }
 }
