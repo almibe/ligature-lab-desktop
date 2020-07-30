@@ -7,9 +7,9 @@ package dev.ligature.lab.desktop
 import java.awt.{BorderLayout, Dimension}
 import java.awt.event.ActionEvent
 
-import dev.ligature.{Ligature, NamedEntity, Predicate, Statement}
+import dev.ligature.{Entity, Ligature, NamedEntity, PersistedStatement, Predicate, Statement, Object => LigObject}
 import dev.ligature.store.inmemory.LigatureInMemory
-import javax.swing.{JButton, JFrame, JLabel, JPanel, JScrollPane, JSplitPane, JTable, JTextField, UIManager, WindowConstants}
+import javax.swing.{BoxLayout, JButton, JFrame, JLabel, JPanel, JScrollPane, JSplitPane, JTable, JTextField, UIManager, WindowConstants}
 import javax.swing.table.DefaultTableModel
 
 object LigatureLabDesktop {
@@ -61,7 +61,18 @@ class EntryPane(val store: Ligature, contentPane: ContentPane) {
   private val predicateTextBox = new JTextField(20)
   private val objectTextBox = new JTextField(20)
 
+  private val buttonPanel = new JPanel()
+  private val buttonLayout = new BoxLayout(buttonPanel, BoxLayout.PAGE_AXIS)
+
   private val addButton = new JButton("Add")
+  private val searchButton = new JButton("Search")
+  private val clearButton = new JButton("Clear")
+//  private val dumpButton = new JButton("Dump")
+
+  buttonPanel.add(addButton)
+  buttonPanel.add(searchButton)
+  buttonPanel.add(clearButton)
+
   val p = new JPanel()
 
 //  p.add(collectionLabel)
@@ -72,7 +83,7 @@ class EntryPane(val store: Ligature, contentPane: ContentPane) {
   p.add(predicateTextBox)
   p.add(objectLabel)
   p.add(objectTextBox)
-  p.add(addButton)
+  p.add(buttonPanel)
 
   addButton.addActionListener { _: ActionEvent =>
     val context = NamedEntity(collectionTextBox.getText())
@@ -86,6 +97,25 @@ class EntryPane(val store: Ligature, contentPane: ContentPane) {
     } yield ()).unsafeRunSync()
 
     contentPane.update()
+  }
+
+  searchButton.addActionListener { _: ActionEvent =>
+    val context: NamedEntity = NamedEntity(collectionTextBox.getText())
+    val subject: Option[Entity] = if (subjectTextBox.getText().nonEmpty) Some(NamedEntity(subjectTextBox.getText())) else None
+    val predicate: Option[Predicate] = if (predicateTextBox.getText().nonEmpty) Some(Predicate(predicateTextBox.getText())) else None
+    val `object`: Option[LigObject] = if (objectTextBox.getText().nonEmpty) Some(NamedEntity(objectTextBox.getText())) else None
+
+    val s = store.compute.use(tx => for {
+      s <- tx.matchStatements(context, subject, predicate, `object`)
+    } yield s).unsafeRunSync()
+
+    contentPane.update(s)
+  }
+
+  clearButton.addActionListener { _: ActionEvent =>
+    subjectTextBox.setText("")
+    predicateTextBox.setText("")
+    objectTextBox.setText("")
   }
 }
 
@@ -113,6 +143,18 @@ class ContentPane(private val store: Ligature) {
     val s = store.compute.use( tx => for {
       s <- tx.allStatements(collection)
     } yield s).unsafeRunSync()
+
+    s.foreach { v =>
+      println(v.toString)
+      val a: Array[Object] = Array(v.toString)
+      tm.addRow(a)
+    }
+  }
+
+  def update(s: Iterable[PersistedStatement]): Unit = {
+    while (tm.getRowCount > 0) {
+      tm.removeRow(0)
+    }
 
     s.foreach { v =>
       println(v.toString)
