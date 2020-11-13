@@ -7,8 +7,9 @@ package dev.ligature.lab.desktop
 import java.awt.{BorderLayout, Dimension}
 import java.awt.event.ActionEvent
 
-import dev.ligature.{Entity, Ligature, NamedEntity, PersistedStatement, Predicate, Statement, Object => LigObject}
-import dev.ligature.store.inmemory.LigatureInMemory
+import cats.effect.IO
+import dev.ligature.{Dataset, LigatureInstance, NamedNode, Node, PersistedStatement, Statement, Object => LigObject}
+import dev.ligature.store.mock.LigatureMock
 import javax.swing.{BoxLayout, JButton, JFrame, JLabel, JPanel, JScrollPane, JSplitPane, JTable, JTextField, UIManager, WindowConstants}
 import javax.swing.table.DefaultTableModel
 
@@ -16,14 +17,17 @@ object LigatureLabDesktop {
   def main(args: Array[String]): Unit = {
     UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName);
 
-    val mainWindow = new MainWindow()
-    mainWindow.startUp()
+    LigatureMock.instance.use { store =>
+      IO {
+        val mainWindow = new MainWindow(store)
+        mainWindow.startUp()
+        ()
+      }
+    }.unsafeRunSync()
   }
 }
 
-class MainWindow {
-  private val store = new LigatureInMemory()
-
+class MainWindow(private val store: LigatureInstance) {
   private val frame = new JFrame("ligatureLab")
 
   frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE)
@@ -37,7 +41,7 @@ class MainWindow {
   }
 }
 
-class MainPane(private val store: Ligature) {
+class MainPane(private val store: LigatureInstance) {
   val p = new JSplitPane()
   p.setOrientation(JSplitPane.VERTICAL_SPLIT)
   private val contentPane = new ContentPane(store)
@@ -50,7 +54,7 @@ class MainPane(private val store: Ligature) {
   }
 }
 
-class EntryPane(val store: Ligature, contentPane: ContentPane) {
+class EntryPane(val store: LigatureInstance, contentPane: ContentPane) {
   private val collectionLabel = new JLabel("Collection:")
   private val subjectLabel = new JLabel("Subject:")
   private val predicateLabel = new JLabel("Predicate:")
@@ -86,27 +90,28 @@ class EntryPane(val store: Ligature, contentPane: ContentPane) {
   p.add(buttonPanel)
 
   addButton.addActionListener { _: ActionEvent =>
-    val context = NamedEntity(collectionTextBox.getText())
-    val subject = NamedEntity(subjectTextBox.getText())
-    val predicate = Predicate(predicateTextBox.getText())
-    val `object` = NamedEntity(objectTextBox.getText())
+    val context = Dataset(collectionTextBox.getText())
+    val subject = NamedNode(subjectTextBox.getText())
+    val predicate = NamedNode(predicateTextBox.getText())
+    val `object` = NamedNode(objectTextBox.getText())
 
-    store.write.use( tx => for {
-      _ <- tx.addStatement(
-        context, Statement(subject, predicate, `object`))
-    } yield ()).unsafeRunSync()
+    store.write.use { tx =>
+      for {
+        _ <- tx.addStatement(context, Statement(subject, predicate, `object`))
+      } yield ()
+    }.unsafeRunSync()
 
     contentPane.update()
   }
 
   searchButton.addActionListener { _: ActionEvent =>
-    val context: NamedEntity = NamedEntity(collectionTextBox.getText())
-    val subject: Option[Entity] = if (subjectTextBox.getText().nonEmpty) Some(NamedEntity(subjectTextBox.getText())) else None
-    val predicate: Option[Predicate] = if (predicateTextBox.getText().nonEmpty) Some(Predicate(predicateTextBox.getText())) else None
-    val `object`: Option[LigObject] = if (objectTextBox.getText().nonEmpty) Some(NamedEntity(objectTextBox.getText())) else None
+    val context: Dataset = Dataset(collectionTextBox.getText())
+    val subject: Option[Node] = if (subjectTextBox.getText().nonEmpty) Some(NamedNode(subjectTextBox.getText())) else None
+    val predicate: Option[NamedNode] = if (predicateTextBox.getText().nonEmpty) Some(NamedNode(predicateTextBox.getText())) else None
+    val `object`: Option[LigObject] = if (objectTextBox.getText().nonEmpty) Some(NamedNode(objectTextBox.getText())) else None
 
-    val s = store.compute.use(tx => for {
-      s <- tx.matchStatements(context, subject, predicate, `object`)
+    val s = store.read.use(tx => for {
+      s <- tx.matchStatements(context, subject, predicate, `object`).compile.toList
     } yield s).unsafeRunSync()
 
     contentPane.update(s)
@@ -119,7 +124,7 @@ class EntryPane(val store: Ligature, contentPane: ContentPane) {
   }
 }
 
-class ContentPane(private val store: Ligature) {
+class ContentPane(private val store: LigatureInstance) {
   val data: Array[Array[AnyRef]] = Array()
   val columnNames: Array[AnyRef] = Array("Statement")
 
@@ -138,10 +143,10 @@ class ContentPane(private val store: Ligature) {
       tm.removeRow(0)
     }
 
-    val collection = NamedEntity("test") //TODO hard coded for now
+    val collection = Dataset("test") //TODO hard coded for now
 
-    val s = store.compute.use( tx => for {
-      s <- tx.allStatements(collection)
+    val s = store.read.use( tx => for {
+      s <- tx.allStatements(collection).compile.toList
     } yield s).unsafeRunSync()
 
     s.foreach { v =>

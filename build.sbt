@@ -13,6 +13,6 @@ mainClass in (Compile, packageBin) := Some("dev.ligature.lab.desktop.LigatureLab
 lazy val root = (project in file("."))
   .settings(
     name := "ligature-lab-desktop",
-    libraryDependencies += "dev.ligature" %% "ligature-keyvalue" % "0.1.0-SNAPSHOT",
+    libraryDependencies += "dev.ligature" %% "ligature-mock" % "0.1.0-SNAPSHOT",
     libraryDependencies += scalaTest % Test
   )
